@@ -1,1 +1,0 @@
-C:\Users\The Ultimate\Desktop\CUDA\programs\sumArray\x64\Debug\sumArray.exe
