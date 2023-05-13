@@ -1,4 +1,4 @@
-﻿#include "cuda_runtime.h"
+#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
 #include "cuda_common.cuh"
@@ -40,14 +40,16 @@ void compare_arrays(int* a, int* b, int size) {
 
 int main() {
 
-	int size = 10000;
+	int size = 100000000; 
 	int block_size = 128;
 
 	int NO_BYTES = size * sizeof(int);
 
+	//runtime error handeling
+	cudaError error;
+
 	//host and device pointers 
 	int* h_a, * h_b, * gpu_results;
-	
 	int* h_c;
 
     // allocate memory
@@ -78,9 +80,14 @@ int main() {
 
 		h_b[i] = (int)(rand() & 0xFF);
 	}
+	//timers
+	clock_t start_cpu, end_cpu;
 
 	//perform addition in cpu
+	start_cpu = clock();
 	sum_array_cpu(h_a, h_b, h_c, size);
+	end_cpu = clock();
+
 
 	// set all elements of gpu_results to zero.
 	memset(gpu_results, 0, NO_BYTES);
@@ -89,38 +96,91 @@ int main() {
 	int* d_a, * d_b, * d_c;
 
 	//allocate memory on GPU
-	cudaMalloc((int**)&d_a, NO_BYTES);
-	cudaMalloc((int**)&d_b, NO_BYTES);
-	cudaMalloc((int**)&d_c, NO_BYTES);
+	error = cudaMalloc((int**)&d_a, NO_BYTES);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	error = cudaMalloc((int**)&d_b, NO_BYTES);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	error = cudaMalloc((int**)&d_c, NO_BYTES);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
 
 
 	//transfer data to device. 
-	
+	clock_t h2d_s, h2d_e;
+	h2d_s = clock();
 	// cudaMemcpy( DESTINATION, SOURCE, SIZE, DIRECTION OF TRANSFER);
-	cudaMemcpy(d_a, h_a, NO_BYTES, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_b, h_b, NO_BYTES, cudaMemcpyHostToDevice);
+	error = cudaMemcpy(d_a, h_a, NO_BYTES, cudaMemcpyHostToDevice);
+	h2d_e = clock();
+
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	error = cudaMemcpy(d_b, h_b, NO_BYTES, cudaMemcpyHostToDevice);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
 
 
 	//launch grid
 	dim3 block(block_size);
 	dim3 grid((size / block.x) + 1);
 
-
+	//timers
+	clock_t start_gpu, end_gpu;
+	start_gpu = clock();
 	//perform addition in gpu
 	sum_array_gpu << <grid, block >> > (d_a, d_b, d_c, size);
 	cudaDeviceSynchronize();
+	end_gpu = clock();
 
+
+
+	clock_t start_d2h, end_d2h;
 	//transfer data back to the host, here gpu_results gets filled with the
 	//results of the addition
-	cudaMemcpy(gpu_results, d_c, NO_BYTES, cudaMemcpyDeviceToHost);
-
+	start_d2h = clock();
+	error = cudaMemcpy(gpu_results, d_c, NO_BYTES, cudaMemcpyDeviceToHost);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	end_d2h = clock();
 	//compare results of cpu and gpu implementation 
 	compare_arrays(gpu_results, h_c, size);
 
 
-	cudaFree(d_a);
-	cudaFree(d_b);
-	cudaFree(d_c);
+	printf("CPU execution time: %1.50f \n",
+		(double)((double)(end_cpu - start_cpu) / CLOCKS_PER_SEC));
+
+	printf("GPU execution time: %1.50f \n",
+		(double)((double)(end_gpu - start_gpu) / CLOCKS_PER_SEC));
+
+	printf("CPU to GPU transfer time: %1.50f \n",
+		(double)((double)(h2d_e - h2d_s) / CLOCKS_PER_SEC));
+
+	printf("GPU to CPU transfer time: %1.50f \n",
+		(double)((double)(end_d2h - start_d2h) / CLOCKS_PER_SEC));
+
+
+
+
+
+	error = cudaFree(d_a);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	error = cudaFree(d_b);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
+	error = cudaFree(d_c);
+	if (error != cudaSuccess) {
+		fprintf(stderr, "Error: %s \n", cudaGetErrorString(error));
+	}
 
 	free(gpu_results);
 	free(h_a);
